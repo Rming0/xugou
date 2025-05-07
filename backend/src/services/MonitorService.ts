@@ -3,12 +3,7 @@ import * as models from "../models";
 import * as repositories from "../repositories";
 import * as NotificationService from "./NotificationService";
 
-/**
- * 执行系统维护任务 - 清理旧记录
- */
-export async function cleanupOldRecords(db: Bindings["DB"]) {
-  return await repositories.cleanupOldRecords(db);
-}
+
 
 /**
  * 获取所有需要检查的监控
@@ -257,7 +252,6 @@ export async function updateMonitor(db: Bindings["DB"], id: number, data: any) {
     if (data.body !== undefined) updateData.body = data.body;
     if (data.active !== undefined) updateData.active = data.active;
     if (data.status !== undefined) updateData.status = data.status;
-    if (data.uptime !== undefined) updateData.uptime = data.uptime;
     if (data.responseTime !== undefined)
       updateData.response_time = data.responseTime;
     if (data.lastChecked !== undefined)

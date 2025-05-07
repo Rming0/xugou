@@ -10,46 +10,6 @@ import {
  * 监控相关的数据库操作
  */
 
-// 清理30天以前的历史记录
-export async function cleanupOldRecords(db: Bindings["DB"]) {
-  console.log("开始清理30天以前的历史记录...");
-
-  // 清理监控状态历史记录
-  const deleteStatusHistoryResult = await db
-    .prepare(
-      `
-      DELETE FROM monitor_status_history 
-      WHERE timestamp < datetime('now', '-30 days')
-    `
-    )
-    .run();
-
-  // 清理通知历史记录
-  const deleteNotificationHistoryResult = await db
-    .prepare(
-      `
-      DELETE FROM notification_history 
-      WHERE sent_at < datetime('now', '-30 days')
-    `
-    )
-    .run();
-
-  const statusHistoryDeleted =
-    (deleteStatusHistoryResult.meta as DbResultMeta)?.changes || 0;
-  const notificationHistoryDeleted =
-    (deleteNotificationHistoryResult.meta as DbResultMeta)?.changes || 0;
-
-  console.log(
-    `清理完成：删除了 ${statusHistoryDeleted} 条状态历史记录，${notificationHistoryDeleted} 条通知历史记录`
-  );
-
-  return {
-    success: true,
-    statusHistoryDeleted,
-    notificationHistoryDeleted,
-  };
-}
-
 // 获取需要检查的监控列表
 export async function getMonitorsToCheck(db: Bindings["DB"]) {
   const result = await db
@@ -121,7 +81,6 @@ export async function getAllMonitors(db: Bindings["DB"]) {
   };
 }
 
-
 // 获取单个监控状态历史 24小时内
 export async function getMonitorStatusHistoryIn24h(
   db: Bindings["DB"],
@@ -182,17 +141,10 @@ export async function updateMonitorStatus(
       `UPDATE monitors 
      SET status = ?, 
          last_checked = ?,
-         response_time = ?,
-         uptime = (
-           SELECT ROUND((COUNT(CASE WHEN status = 'up' THEN 1 ELSE NULL END) * 100.0 / COUNT(*)), 2)
-           FROM monitor_status_history_24h
-           WHERE monitor_id = ?
-           ORDER BY timestamp DESC
-           LIMIT 100
-         )
+         response_time = ?
      WHERE id = ?`
     )
-    .bind(status, now, responseTime, monitorId, monitorId)
+    .bind(status, now, responseTime, monitorId)
     .run();
 }
 
@@ -214,8 +166,8 @@ export async function createMonitor(
   const result = await db
     .prepare(
       `INSERT INTO monitors 
-     (name, url, method, interval, timeout, expected_status, headers, body, created_by, active, status, uptime, response_time, last_checked, created_at, updated_at) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     (name, url, method, interval, timeout, expected_status, headers, body, created_by, active, status, response_time, last_checked, created_at, updated_at) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       name,
@@ -229,7 +181,6 @@ export async function createMonitor(
       userId,
       1, // active
       "pending",
-      100.0,
       0,
       null,
       now,
@@ -355,13 +306,15 @@ export async function updateMonitorConfig(
 // 删除监控
 export async function deleteMonitor(db: Bindings["DB"], id: number) {
   // 先删除关联的历史数据
-  await db
-    .prepare("DELETE FROM monitor_status_history WHERE monitor_id = ?")
-    .bind(id)
-    .run();
 
   await db
     .prepare("DELETE FROM monitor_status_history_24h WHERE monitor_id = ?")
+    .bind(id)
+    .run();
+
+  // 删除每日统计数据
+  await db
+    .prepare("DELETE FROM monitor_daily_stats WHERE monitor_id = ?")
     .bind(id)
     .run();
 
